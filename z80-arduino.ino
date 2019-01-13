@@ -1,31 +1,24 @@
-const char PROG_NAME[] = "Z-80 control program";
-const char PROG_VER[]  = "ver 2.2";
-const char PROG_AUTH[] = "Copyright(c) s.nagahara";
-
-//#undef  Z80_CLK_LONG_LOW    // CLK=Lの時間に制限がある場合
-#define Z80_CLK_LONG_LOW  1 // CLK=Lで止められる場合
+const char PROG_NAME[] = "Z80 control program";
+const char PROG_VER[]  = "ver 2.3";
+const char PROG_AUTH[] = "s.nagahara";
 
 #undef BOARD_MEGA        //ボードがUNOの場合
 //#define BOARD_MEGA  1    //ボードがMEGAの場合
 
-// 必要かどうかわからないが、念のため
+// 不要かもしれないが、念のため
 // HIGH/LOWをそれぞれ1/0に変換する
 #define  HLto10(n)  (((n)==HIGH) ? 1 : 0)
-//#define  HLto10(n)  (n)
 
 // 非ゼロ/ゼロをHIGH/LOWに変換する。正論理（NZ2PosHL）と負論理（NZ2NegHL）
 #define  NZ2PosHL(n)  (((n)!=0) ? HIGH : LOW)
 #define  NZ2NegHL(n)  (((n)!=0) ? LOW : HIGH)
-//#define  NZ2PosHL(n)  (n)
-//#define  NZ2NegHL(n)  (!(n))
 
 // true/falseをHIGH/LOWに変換する。正論理（tf2PosHL）と負論理（tf2NegHL）
 #define tf2PosHL(n)  ((n) ? HIGH : LOW)
 #define tf2NegHL(n)  ((n) ? LOW : HIGH)
-//#define tf2PosHL(n)  (n)
-//#define tf2NegHL(n)  (!(n))
 
 // PIN number
+//この設定は接続のしかたにあわせて変えること
 const int Z80_D0    =  2;
 const int Z80_D1    =  3;
 const int Z80_D2    =  4;
@@ -42,8 +35,12 @@ const int Z80_RESET = 11;
 const int Z80_MREQ  = 12;
 const int Z80_CLK   = 13;
 
+const int Z80_A0    = A0;
+const int Z80_A1    = A1;
+const int Z80_A2    = A2;
+const int Z80_A3    = A3;
+
 #ifdef BOARD_MEGA
-//この設定は接続のしかたにあわせて変えること
 const int Z80_INT   = 22;
 const int Z80_RFSH  = 23;
 const int Z80_NMI   = 24;
@@ -52,15 +49,7 @@ const int Z80_WAIT  = 26;
 const int Z80_BUSAK = 27;
 const int Z80_HALT  = 28;
 const int Z80_IORQ  = 29;
-#endif
 
-const int Z80_A0    = A0;
-const int Z80_A1    = A1;
-const int Z80_A2    = A2;
-const int Z80_A3    = A3;
-
-#ifdef BOARD_MEGA
-//この設定は接続のしかたにあわせて変えること
 const int Z80_A4    = 42;
 const int Z80_A5    = 43;
 const int Z80_A6    = 44;
@@ -76,14 +65,15 @@ const int Z80_A15   = 53;
 #endif
 
 // メインループの状態値
-const int CMD_IDLE   =  0;
-const int CMD_HALF   =  1;
-const int CMD_CYCLE1 = 11;
-//const int CMD_CYCLE2 = 12;
-const int CMD_STEP1  = 21;
-const int CMD_STEP2  = 22;
-const int CMD_GO1    = 31;
-//const int CMD_GO2    = 32;
+enum enum_cmd {
+  CMD_IDLE,
+  CMD_HALF,
+  CMD_CYCLE1,
+  CMD_STEP1,
+  CMD_STEP2,
+  CMD_GO1,
+};
+typedef enum enum_cmd cmd_t;
 
 // データバスに書き込み中かどうかを表すフラグ
 boolean WRITING_Z80_data = false;
@@ -91,7 +81,8 @@ boolean WRITING_Z80_data = false;
 // バス状態を出力するかどうかを表すフラグ
 boolean OUTPUT_BUS_STATE = true;
 
-// 割り込み応答データ
+// 割り込み応答
+// ここでは決め打ちの値を返している
 unsigned char BUS_INT_DATA = 0xf7; // RST 30H
 
 // 各バスの状態を保持
@@ -117,7 +108,8 @@ struct {
 #ifdef BOARD_MEGA
 const int MAIN_MEM_SIZE = 1024;
 // メモリ
-unsigned char MAIN_mem[MAIN_MEM_SIZE] = {
+unsigned char MAIN_mem[MAIN_MEM_SIZE];
+const unsigned char MAIN_mem_org[MAIN_MEM_SIZE] = {
   0xFD, 0x2A, 0x1A, 0x00,  // LD IY, (001AH)   ;IYレジスタにカウンタのアドレスを設定
   0x31, 0x80, 0x00,        // LD SP, 0080H     ;スタックポインタを設定
   0x3E, 0x55,              // LD A, 55H        ;保存データをセット
@@ -136,10 +128,13 @@ unsigned char MAIN_mem[MAIN_MEM_SIZE] = {
 // I/O領域
 const int MAIN_IO_SIZE = 256;
 unsigned char MAIN_io[MAIN_IO_SIZE];
+
 #else
+// UNOの場合
 const int MAIN_MEM_SIZE = 16;
 // メモリ
-unsigned char MAIN_mem[MAIN_MEM_SIZE] = {
+unsigned char MAIN_mem[MAIN_MEM_SIZE];
+const unsigned char MAIN_mem_org[MAIN_MEM_SIZE] = {
   0x2A, 0x0D, 0x00, // LD HL, (000DH) ;HLレジスタにカウンタのアドレスを設定
   0xF9,             // LD SP, HL      ;スタックポインタを設定
   0x36, 0x00,       // LD (HL), 00H   ;カウンタをクリア
@@ -421,7 +416,7 @@ void getLine() {
     while (!Serial.available()) ;
     c = Serial.peek();
     if (c == ':') break;
-    c = Serial.read(); // discard
+    c = Serial.read();
   }
   for (int i = 0; i < RXBUF_MAX; i++) {
     while (!Serial.available()) ;
@@ -473,7 +468,7 @@ void processLine() {
     ihDat[i] = hex2Val(rxBuf[9+i*2])*16 + hex2Val(rxBuf[9+i*2+1]);
     ihSum += ihDat[i];
   }
-  ihSum += (hex2Val(rxBuf[9+ihLen*2])*16 + hex2Val(rxBuf[9+ihLen*2+1]));
+  ihSum += hex2Val(rxBuf[9+ihLen*2])*16 + hex2Val(rxBuf[9+ihLen*2+1]);
   if (ihSum % 256 != 0) Serial.println("processLine: checksum error");
 }
 
@@ -508,9 +503,15 @@ void readIntelHex(int loadMode) {
 
 // Z-80をリセットする
 void execRESET() {
+  int i;
+
   Serial.print("Reset ... ");
 
   writeEndZ80Data();
+
+  for (i = 0; i < MAIN_MEM_SIZE; i++) {
+    MAIN_mem[i] = MAIN_mem_org[i];
+  }
 
   writeRESET();
 
@@ -534,8 +535,8 @@ void execRESET() {
 }
 
 // コマンド入力
-int inputCMD() {
-  int cmd;
+cmd_t inputCMD() {
+  cmd_t cmd;
   int c;
 
   cmd = CMD_IDLE;
@@ -643,7 +644,7 @@ void execHalfCycle() {
     Z80_stat.z_data = BUS_INT_DATA;
     writeZ80Data();
   } else if (Z80_stat.z_iorq) { // 普通のI/O要求の場合
-    Z80_stat.z_addr &= 0x00FF; // I/Oアクセスの場合はアドレスの下位8ビットだけが有効
+    Z80_stat.z_addr &= 0x00FF; // I/Oアクセスの場合、ここではアドレスの下位8ビットだけを使用する
     if (Z80_stat.z_rd) {
       checkIOADDR(Z80_stat.z_addr);
       // RDの場合は指定アドレスのメモリ内容をデータバスに書く
@@ -761,7 +762,7 @@ int stopIfKeyIn(int oldCmd) {
 // メイン
 void loop() {
   // put your main code here, to run repeatedly:
-  static int cmd = CMD_IDLE;
+  static cmd_t cmd = CMD_IDLE;
 
   switch (cmd) {
     case CMD_IDLE:
@@ -803,3 +804,4 @@ void loop() {
       break;
   }
 }
+
