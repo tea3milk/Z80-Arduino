@@ -1,24 +1,12 @@
-const char PROG_NAME[] = "Z-80 shield support program";
-const char PROG_VER[]  = "ver 2.1";
-const char PROG_AUTH[] = "(c) nagahara";
+const char PROG_NAME[] = "Z-80 control program";
+const char PROG_VER[]  = "ver 2.2";
+const char PROG_AUTH[] = "Copyright(c) s.nagahara";
 
 //#undef  Z80_CLK_LONG_LOW    // CLK=Lの時間に制限がある場合
 #define Z80_CLK_LONG_LOW  1 // CLK=Lで止められる場合
 
-//#undef BOARD_MEGA
-#define BOARD_MEGA  1
-
-#ifdef BOARD_MEGA
-#define BOARD_MEGA1  1
-#define BOARD_MEGA2  1
-#define BOARD_MEGA3  1
-#define BOARD_MEGA4  1
-#define BOARD_MEGA5  1
-#define BOARD_MEGA6  1
-#define BOARD_MEGA7  1
-#define BOARD_MEGA8  1
-#define BOARD_MEGA9  1
-#endif
+#undef BOARD_MEGA        //ボードがUNOの場合
+//#define BOARD_MEGA  1    //ボードがMEGAの場合
 
 // 必要かどうかわからないが、念のため
 // HIGH/LOWをそれぞれ1/0に変換する
@@ -55,7 +43,7 @@ const int Z80_MREQ  = 12;
 const int Z80_CLK   = 13;
 
 #ifdef BOARD_MEGA
-//この設定は接続の仕方にあわせて変えること
+//この設定は接続のしかたにあわせて変えること
 const int Z80_INT   = 22;
 const int Z80_RFSH  = 23;
 const int Z80_NMI   = 24;
@@ -72,7 +60,7 @@ const int Z80_A2    = A2;
 const int Z80_A3    = A3;
 
 #ifdef BOARD_MEGA
-//この設定は接続の仕方にあわせて変えること
+//この設定は接続のしかたにあわせて変えること
 const int Z80_A4    = 42;
 const int Z80_A5    = 43;
 const int Z80_A6    = 44;
@@ -105,7 +93,6 @@ boolean OUTPUT_BUS_STATE = true;
 
 // 割り込み応答データ
 unsigned char BUS_INT_DATA = 0xf7; // RST 30H
-//unsigned char BUS_INT_DATA = 0xcd; // CALL ... 3バイト命令ではどうなるか
 
 // 各バスの状態を保持
 struct {
@@ -127,7 +114,7 @@ struct {
 } Z80_stat;
 
 // メモリ領域、I/O領域
-#ifdef BOARD_MEGA1
+#ifdef BOARD_MEGA
 const int MAIN_MEM_SIZE = 1024;
 // メモリ
 unsigned char MAIN_mem[MAIN_MEM_SIZE] = {
@@ -233,7 +220,7 @@ void readZ80Ctrl() {
   Z80_stat.z_wr   = (digitalRead(Z80_WR)   == LOW);
   Z80_stat.z_m1   = (digitalRead(Z80_M1)   == LOW);
   Z80_stat.z_clk  = (digitalRead(Z80_CLK)  == LOW);
-#ifdef BOARD_MEGA2
+#ifdef BOARD_MEGA
   Z80_stat.z_rfsh = (digitalRead(Z80_RFSH) == LOW);
   Z80_stat.z_busak= (digitalRead(Z80_BUSAK)== LOW);
   Z80_stat.z_iorq = (digitalRead(Z80_IORQ) == LOW);
@@ -247,7 +234,7 @@ void readZ80Ctrl() {
 
 // 制御バスに書き込む
 void writeZ80Ctrl() {
-#ifdef BOARD_MEGA3
+#ifdef BOARD_MEGA
   digitalWrite(Z80_INT,   tf2NegHL(Z80_stat.z_int  ));
   digitalWrite(Z80_NMI,   tf2NegHL(Z80_stat.z_nmi  ));
   digitalWrite(Z80_BUSRQ, tf2NegHL(Z80_stat.z_busrq));
@@ -262,7 +249,7 @@ void readZ80Addr() {
     | (HLto10(digitalRead(Z80_A1 )) <<  1)
     | (HLto10(digitalRead(Z80_A2 )) <<  2)
     | (HLto10(digitalRead(Z80_A3 )) <<  3)
-#ifdef BOARD_MEGA4
+#ifdef BOARD_MEGA
     | (HLto10(digitalRead(Z80_A4 )) <<  4)
     | (HLto10(digitalRead(Z80_A5 )) <<  5)
     | (HLto10(digitalRead(Z80_A6 )) <<  6)
@@ -342,29 +329,17 @@ void writeEndZ80Data() {
 
 // リセット出力
 void writeRESET() {
+  int i;
+
   digitalWrite(Z80_RESET, LOW);
 
   // RESET=Lを3クロック以上保持する
-  digitalWrite(Z80_CLK, LOW);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, HIGH);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, LOW);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, HIGH);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, LOW);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, HIGH);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, LOW);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, HIGH);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, LOW);
-  delayMicroseconds(1);
-  digitalWrite(Z80_CLK, HIGH);
-  delayMicroseconds(1);
+  for (i = 0; i < 10; i++) {
+    digitalWrite(Z80_CLK, LOW);
+    delayMicroseconds(1);
+    digitalWrite(Z80_CLK, HIGH);
+    delayMicroseconds(1);
+  }
 
   digitalWrite(Z80_RESET, HIGH);
 }
@@ -426,7 +401,7 @@ void dumpArray(unsigned char *arrayType, int addr) {
   Serial.println("---");
 }
 
-#ifdef BOARD_MEGA9
+#ifdef BOARD_MEGA
 // Intel Hexファイルの読み込み
 #define CHECK_EOL(n)  ((n)=='\r' || (n)=='\n')
 int ihLen;
@@ -529,7 +504,7 @@ void readIntelHex(int loadMode) {
   discardRxData();
   Serial.println("done");
 }
-#endif /*BOARD_MEGA9*/
+#endif
 
 // Z-80をリセットする
 void execRESET() {
@@ -597,7 +572,7 @@ int inputCMD() {
     case '?':
       printHelp();
       break;
-#ifdef BOARD_MEGA5
+#ifdef BOARD_MEGA
     case 'i':
       Z80_stat.z_int = !Z80_stat.z_int;
       writeZ80Ctrl();
@@ -663,7 +638,7 @@ void execHalfCycle() {
     } else {
       //
     }
-#ifdef BOARD_MEGA6
+#ifdef BOARD_MEGA
   } else if (Z80_stat.z_iorq && Z80_stat.z_m1) { // 割り込み受付後の特別なM1サイクルの場合
     Z80_stat.z_data = BUS_INT_DATA;
     writeZ80Data();
@@ -712,7 +687,7 @@ void setup() {
   pinMode(Z80_M1    , INPUT_PULLUP);
   pinMode(Z80_MREQ  , INPUT_PULLUP);
 
-#ifdef BOARD_MEGA7
+#ifdef BOARD_MEGA
   pinMode(Z80_RFSH  , INPUT_PULLUP);
   pinMode(Z80_BUSAK , INPUT_PULLUP);
   pinMode(Z80_IORQ  , INPUT_PULLUP);
@@ -733,7 +708,7 @@ void setup() {
   pinMode(Z80_A2    , INPUT_PULLUP);
   pinMode(Z80_A3    , INPUT_PULLUP);
 
-#ifdef BOARD_MEGA8
+#ifdef BOARD_MEGA
   pinMode(Z80_A4    , INPUT_PULLUP);
   pinMode(Z80_A5    , INPUT_PULLUP);
   pinMode(Z80_A6    , INPUT_PULLUP);
@@ -828,4 +803,3 @@ void loop() {
       break;
   }
 }
-
